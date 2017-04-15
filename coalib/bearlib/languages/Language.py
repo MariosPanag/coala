@@ -169,22 +169,22 @@ class LanguageMeta(type, metaclass=LanguageUberMeta):
                                    for version in versions))
 
     def __gt__(cls, other):
-        return cls is not Language and cls() > other
+        return cls is not Language and limit_versions(cls(), other, operator.gt)
 
     def __lt__(cls, other):
-        return cls is not Language and cls() < other
+        return cls is not Language and limit_versions(cls(), other, operator.lt)
 
     def __ge__(cls, other):
-        return cls is not Language and cls() >= other
+        return cls is not Language and limit_versions(cls(), other, operator.ge)
 
     def __le__(cls, other):
-        return cls is not Language and cls() <= other
+        return cls is not Language and limit_versions(cls(), other, operator.le)
 
     def __eq__(cls, other):
-        return cls is not Language and cls() == other
+        return cls is not Language and limit_versions(cls(), other, operator.eq)
 
     def __ne__(cls, other):
-        return cls is not Language and cls() != other
+        return cls is not Language and limit_versions(cls(), other, operator.ne)
 
 
 class Language(metaclass=LanguageMeta):
@@ -289,18 +289,29 @@ class Language(metaclass=LanguageMeta):
     >>> str(Language.TrumpScript(3.6))
     'America is great. 3.6'
 
-    You can also define ranges of versions of languages:
+    The or operator can be used to return a Language instance with combined
+    versions. Respectively, the and operator can be used to return an instance
+    with the common versions. Both operators work with str, int, float and
+    Language instances:
 
-    >>> (Language.TrumpScript > 3.3) <= 3.5
-    America is great. 3.4, 3.5
+    >>> Language.TrumpScript(3.6) | 'ts 3.4, 3.5'
+    America is great. 3.4, 3.5, 3.6
 
-    >>> Language.TrumpScript == 3
-    America is great. 3.3, 3.4, 3.5, 3.6
+    >>> Language.TrumpScript(3.6) | 3.5
+    America is great. 3.5, 3.6
 
-    Those can be combined by the or operator:
-
-    >>> (Language.TrumpScript == 3.6) | (Language.TrumpScript == 2)
+    >>> Language.TrumpScript(3.6) | Language.TrumpScript(2.7)
     America is great. 2.7, 3.6
+
+    >>> Language.TrumpScript(2.7, 3.3) & 'ts 3.3, 3.5'
+    America is great. 3.3
+
+    >>> Language.TrumpScript(2.7, 3.3) & 3.5
+
+
+    >>> Language.TrumpScript(2.7, 3.3) & Language.TrumpScript(2.7, 3.3, 3.4)
+    America is great. 2.7, 3.3
+
 
     The `__contains__` operator of the class is defined as well for strings
     and instances. This is case insensitive and aliases are allowed:
@@ -316,15 +327,45 @@ class Language(metaclass=LanguageMeta):
 
     This also works on instances:
 
-    >>> 'ts 3.6, 3.5' in (Language.TrumpScript == 3)
+    >>> 'ts 3.6, 3.5' in (Language.TrumpScript(3.4, 3.5, 3.6))
     True
-    >>> 'ts 3.6,3.5' in ((Language.TrumpScript == 2)
+    >>> 'ts 3.6,3.5' in ((Language.TrumpScript(2.7))
     ...                  | Language.TrumpScript(3.5))
     False
-    >>> Language.TrumpScript(2.7, 3.5) in (Language.TrumpScript == 3)
+    >>> Language.TrumpScript(2.7, 3.5) in (Language.TrumpScript(3.4, 3.5, 3.6))
     False
-    >>> Language.TrumpScript(3.5) in (Language.TrumpScript == 3)
+    >>> Language.TrumpScript(3.5) in (Language.TrumpScript(3.4, 3.5, 3.6))
     True
+
+    Comparison between Language instances can be achieved only for instances of
+    the same class:
+
+    >>> Language['TrumpScript'] == Language['Python']
+    Traceback (most recent call last):
+    ...
+    TypeError: Language object is not compatible with type of given comparable,\
+ <class 'coalib.bearlib.languages.Language.America is great.'>\
+ != <class 'coalib.bearlib.languages.Language.Python'>
+
+    Equality can be achieved for Languages with multiple versions:
+
+    >>> Language.TrumpScript(2.7, 3.3) == Language.TrumpScript(2.7, 3.3, 3.4)
+    False
+
+    For using gt, lt, ge or le operators you should specify one version:
+
+    >>> Language.TrumpScript(2.7) < Language.TrumpScript(3.4)
+    True
+    >>> Language.TrumpScript(2.7) > Language.TrumpScript(3.3, 3.4)
+    False
+    >>> Language.TrumpScript(3.4) <= Language.TrumpScript(3.4)
+    True
+    >>> Language.TrumpScript(3.4) >= Language.TrumpScript(3.4, 3.5)
+    True
+    >>> Language.TrumpScript(2.7, 3.3) < Language.TrumpScript(2.7, 3.3, 3.4)
+    Traceback (most recent call last):
+     ...
+    TypeError: You have to specify ONE version
 
     Any undefined language will obviously not be available:
 
@@ -333,6 +374,15 @@ class Language(metaclass=LanguageMeta):
      ...
     AttributeError
     """
+
+    # TO DO
+    # You can also define ranges of versions of languages:
+    #
+    # >>> (Language.TrumpScript > 3.3) <= 3.5
+    # America is great. 3.4, 3.5
+    #
+    # >>> Language.TrumpScript == 3
+    # America is great. 3.3, 3.4, 3.5, 3.6
 
     def __init__(self, *versions):
         assert all(version in type(self).versions for version in versions)
@@ -366,25 +416,42 @@ class Language(metaclass=LanguageMeta):
         return str(self)
 
     def __gt__(self, other):
-        return limit_versions(self, other, operator.gt)
+        return compare(self, other, operator.gt)
 
     def __lt__(self, other):
-        return limit_versions(self, other, operator.lt)
+        return compare(self, other, operator.lt)
 
     def __ge__(self, other):
-        return limit_versions(self, other, operator.ge)
+        return compare(self, other, operator.ge)
 
     def __le__(self, other):
-        return limit_versions(self, other, operator.le)
+        return compare(self, other, operator.le)
 
     def __eq__(self, other):
-        return limit_versions(self, other, operator.eq)
+        return compare(self, other, operator.eq)
 
     def __ne__(self, other):
-        return limit_versions(self, other, operator.ne)
+        return compare(self, other, operator.ne)
 
     def __or__(self, other):
+        if isinstance(other, (int, float)):
+            other = type(self)((other))
+        elif isinstance(other, str):
+            other = Language[other]
+        assert_type_equals(self, other)
         return type(self)(*chain(self.versions, other.versions))
+
+    def __and__(self, other):
+        if isinstance(other, (int, float)):
+            other = type(self)((other))
+        elif isinstance(other, str):
+            other = Language[other]
+        assert_type_equals(self, other)
+        common_versions = set(self.versions).intersection(other.versions)
+        if common_versions:
+            return type(self)(*tuple(common_versions))
+        else:
+            return None
 
     def __contains__(self, item):
         item = Language[item]
@@ -429,12 +496,93 @@ def limit_versions(language, limit, operator):
         versions = [version for version in language.versions
                     if operator(int(version), limit)]
     else:
-
         versions = [version for version in language.versions
                     if operator(version, limit)]
     if not versions:
         raise ValueError('No versions left')
     return type(language)(*versions)
+
+
+def assert_type_equals(language, comparable):
+    """
+    Checks if the given instances are of the same Language class and raises an
+    error otherwise.
+
+    :param language:
+        A `Language` instance
+    :param comparable:
+        Another `Language` instance
+    :return:
+        True
+    :raises TypeError:
+        If Language instances are not of the same class
+    """
+    if type(language) is not type(comparable):
+        raise TypeError('Language object is not compatible with type of given '
+                        'comparable, {} != {}'
+                        .format(type(language), type(comparable)))
+
+
+def compare_versions(language, versions, operator_):
+    """
+    Compares the version of a Language instance to the given set of versions
+    using gt, lt, ge or le operator. Comparison can be achieved if only the
+    given instance has a specified version. Otherwise, comparison of sets of
+    versions doesn't make sense and raises an error.
+
+    :param language:
+        A `Language` instance
+    :param versions:
+        A tuple of versions to be compared to instance's version.
+    :param operator_:
+        The operator to use for the comparison.
+    :return:
+        True/False
+    :raises TypeError:
+        If Language instance has zero or more than one version
+    """
+    if len(language.versions) != 1:
+        raise TypeError('You have to specify ONE version')
+    elif operator_ in [operator.ge, operator.le]:
+        return language.versions[0] in versions
+    else:
+        return all(operator_(language.versions[0], version)
+                   for version in versions)
+
+
+def compare(language, comparable, operator_):
+    """
+    Compares a Language instance to another depending on the given operator:
+
+    >>> Language['C'] == Language["C"]
+    True
+    >>> Language['py 2'] != Language['py 3']
+    True
+    >>> Language['Python 2.7'] < Language['Python 3.4']
+    True
+    >>> Language['Python 2.7'] > Language['py 3']
+    False
+    >>> Language['Python'] < Language['py 3']
+    Traceback (most recent call last):
+    ...
+    TypeError: You have to specify ONE version
+
+    :param language:
+        A `Language` instance.
+    :param comparable:
+        An instance to be compared to `language`.
+    :param operator_:
+        The operator to use for the comparison.
+    :return:
+        True/False
+    :raises TypeError:
+        If Language instances are not of the same type.
+    """
+    assert_type_equals(language, comparable)
+    if operator_ in [operator.eq, operator.ne]:
+        return operator_(language.versions, comparable.versions)
+    else:
+        return compare_versions(language, comparable.versions, operator_)
 
 
 class Languages(tuple):
